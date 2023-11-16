@@ -1,10 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
+	"real_time_monitoring_system/utils"
+	"time"
 )
+
+type ConsumeMessageDataResponse struct {
+	Message     string    `json:"message"`
+	MessageTime time.Time `json:"message_time"`
+}
 
 func consumeAndMonitor(topic string) {
 	c, err := kafka.NewConsumer(&kafka.ConfigMap{
@@ -33,7 +41,18 @@ func consumeAndMonitor(topic string) {
 }
 
 func processAndDisplayMonitoringData(message []byte) {
-	fmt.Printf("Monitoring Data: %s\n", message)
+	var receiveMessage ConsumeMessageDataResponse
+	err := json.Unmarshal(message, &receiveMessage)
+	if err != nil {
+		log.Println("json.Unmarshal.err:", err)
+		return
+	}
+
+	fmt.Printf(
+		"Notification: Message: %s | Received At: %v \n",
+		receiveMessage.Message,
+		utils.DateFormat(receiveMessage.MessageTime),
+	)
 }
 
 func main() {
