@@ -1,0 +1,11 @@
+.env
+/.idea
+/bin
+main
+local.Dockerfile
+
+/uploads
+
+./uploads
+
+
