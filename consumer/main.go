@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"github.com/confluentinc/confluent-kafka-go/kafka"
 	"log"
+	"os"
+	"os/signal"
 	"real_time_monitoring_system/utils"
+	"syscall"
 	"time"
 )
 
@@ -14,29 +17,62 @@ type ConsumeMessageDataResponse struct {
 	MessageTime time.Time `json:"message_time"`
 }
 
-func consumeAndMonitor(topic string) {
-	c, err := kafka.NewConsumer(&kafka.ConfigMap{
+type PerformanceMatricesDataResponse struct {
+	CPUUsage    int       `json:"cpu_usage"`
+	MemoryUsage int       `json:"memory_usage"`
+	CurrentTime time.Time `json:"current_time"`
+}
+
+func consumeAndMonitor(topics []string) {
+	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": "localhost:19092",
-		"group.id":          "your_consumer_group",
+		"group.id":          "consumer_group",
 		"auto.offset.reset": "earliest",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer c.Close()
+	defer consumer.Close()
 
-	err = c.SubscribeTopics([]string{topic}, nil)
+	err = consumer.SubscribeTopics(topics, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	for {
-		msg, err := c.ReadMessage(-1)
-		if err == nil {
-			processAndDisplayMonitoringData(msg.Value)
-		} else {
-			log.Printf("Error consuming message: %v (%v)\n", err, msg)
+	signalChan := make(chan os.Signal, 1)
+	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		for {
+			select {
+			case sig := <-signalChan:
+				fmt.Printf("Caught signal %v: terminating\n", sig)
+				os.Exit(1)
+			default:
+				msg, err := consumer.ReadMessage(-1)
+				if err == nil {
+					processMessage(msg)
+				} else {
+					log.Printf("Error consuming message: %v (%v)\n", err, msg)
+				}
+			}
 		}
+	}()
+
+	// Block until a signal is received
+	select {}
+}
+
+func processMessage(msg *kafka.Message) {
+	topic := *msg.TopicPartition.Topic
+	switch topic {
+	case utils.PerformanceMetrics:
+		processPerformanceMetrics(msg.Value)
+	case utils.NotificationBulk:
+		processAndDisplayMonitoringData(msg.Value)
+	// Add more cases for additional topics
+	default:
+		log.Printf("Received message from unknown topic: %s\n", topic)
 	}
 }
 
@@ -55,6 +91,28 @@ func processAndDisplayMonitoringData(message []byte) {
 	)
 }
 
+func processPerformanceMetrics(message []byte) {
+	var receiveMessage PerformanceMatricesDataResponse
+	err := json.Unmarshal(message, &receiveMessage)
+	if err != nil {
+		log.Println("json.Unmarshal.err:", err)
+		return
+	}
+
+	fmt.Println("")
+	fmt.Printf(
+		"System Monitoring Log:\nCPU Usage: %d%%\nMemory Usage: %d%%\nCurrent Time: %v\n",
+		receiveMessage.CPUUsage,
+		receiveMessage.MemoryUsage,
+		utils.DateFormatV2(receiveMessage.CurrentTime),
+	)
+}
+
 func main() {
-	consumeAndMonitor("your_topic_name")
+	fmt.Println("Consumer service is running ...")
+	topics := []string{
+		utils.NotificationBulk,
+		utils.PerformanceMetrics,
+	}
+	consumeAndMonitor(topics)
 }

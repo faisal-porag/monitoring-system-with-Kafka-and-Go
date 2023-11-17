@@ -6,7 +6,7 @@ import (
 	"log"
 )
 
-func ProduceMessage(data interface{}, topic string) {
+func ProduceMessage(data interface{}, topic string) error {
 	p, err := kafka.NewProducer(&kafka.ConfigMap{"bootstrap.servers": "localhost:19092"})
 	if err != nil {
 		log.Fatal(err)
@@ -19,7 +19,7 @@ func ProduceMessage(data interface{}, topic string) {
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		log.Println("json.Marshal.err:", err)
-		return
+		return err
 	}
 
 	err = p.Produce(&kafka.Message{
@@ -29,6 +29,7 @@ func ProduceMessage(data interface{}, topic string) {
 
 	if err != nil {
 		log.Fatal(err)
+		return err
 	}
 
 	e := <-deliveryChan
@@ -36,6 +37,7 @@ func ProduceMessage(data interface{}, topic string) {
 
 	if m.TopicPartition.Error != nil {
 		log.Printf("Delivery failed: %v\n", m.TopicPartition.Error)
+		return m.TopicPartition.Error
 	} else {
 		log.Printf(
 			"Delivered message to topic %s [%d] at offset %v\n",
@@ -44,4 +46,5 @@ func ProduceMessage(data interface{}, topic string) {
 			m.TopicPartition.Offset,
 		)
 	}
+	return nil
 }

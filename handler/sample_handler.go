@@ -2,8 +2,10 @@ package handler
 
 import (
 	"github.com/gin-gonic/gin"
+	"log"
 	"net/http"
 	"real_time_monitoring_system/producer"
+	"real_time_monitoring_system/utils"
 	"time"
 )
 
@@ -38,7 +40,10 @@ func SendMessageHandler() func(c *gin.Context) {
 			MessageTime: time.Now(),
 		}
 
-		producer.ProduceMessage(sendMessageData, "your_topic_name")
+		err := producer.ProduceMessage(sendMessageData, utils.NotificationBulk)
+		if err != nil {
+			log.Println(err)
+		}
 
 		c.JSON(http.StatusOK, Success{
 			Status: "Ok",
