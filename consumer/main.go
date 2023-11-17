@@ -26,8 +26,10 @@ type PerformanceMatricesDataResponse struct {
 func consumeAndMonitor(topics []string) {
 	consumer, err := kafka.NewConsumer(&kafka.ConfigMap{
 		"bootstrap.servers": "localhost:19092",
-		"group.id":          "consumer_group",
+		"group.id":          "notification_group",
 		"auto.offset.reset": "earliest",
+		// Add more Kafka configuration parameters as needed
+		"enable.auto.commit": false, // Disable automatic offset commits
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -51,7 +53,7 @@ func consumeAndMonitor(topics []string) {
 			default:
 				msg, err := consumer.ReadMessage(-1)
 				if err == nil {
-					processMessage(msg)
+					processMessage(msg, consumer)
 				} else {
 					log.Printf("Error consuming message: %v (%v)\n", err, msg)
 				}
@@ -63,22 +65,22 @@ func consumeAndMonitor(topics []string) {
 	select {}
 }
 
-func processMessage(msg *kafka.Message) {
+func processMessage(msg *kafka.Message, consumer *kafka.Consumer) {
 	topic := *msg.TopicPartition.Topic
 	switch topic {
 	case utils.PerformanceMetrics:
-		processPerformanceMetrics(msg.Value)
+		processPerformanceMetrics(msg, consumer)
 	case utils.NotificationBulk:
-		processAndDisplayMonitoringData(msg.Value)
+		processAndDisplayMonitoringData(msg, consumer)
 	// Add more cases for additional topics
 	default:
 		log.Printf("Received message from unknown topic: %s\n", topic)
 	}
 }
 
-func processAndDisplayMonitoringData(message []byte) {
+func processAndDisplayMonitoringData(msg *kafka.Message, consumer *kafka.Consumer) {
 	var receiveMessage ConsumeMessageDataResponse
-	err := json.Unmarshal(message, &receiveMessage)
+	err := json.Unmarshal(msg.Value, &receiveMessage)
 	if err != nil {
 		log.Println("json.Unmarshal.err:", err)
 		return
@@ -89,11 +91,17 @@ func processAndDisplayMonitoringData(message []byte) {
 		receiveMessage.Message,
 		utils.DateFormat(receiveMessage.MessageTime),
 	)
+
+	// Acknowledge the message
+	_, err1 := consumer.CommitMessage(msg)
+	if err1 != nil {
+		log.Println(err1)
+	}
 }
 
-func processPerformanceMetrics(message []byte) {
+func processPerformanceMetrics(msg *kafka.Message, consumer *kafka.Consumer) {
 	var receiveMessage PerformanceMatricesDataResponse
-	err := json.Unmarshal(message, &receiveMessage)
+	err := json.Unmarshal(msg.Value, &receiveMessage)
 	if err != nil {
 		log.Println("json.Unmarshal.err:", err)
 		return
@@ -106,6 +114,12 @@ func processPerformanceMetrics(message []byte) {
 		receiveMessage.MemoryUsage,
 		utils.DateFormatV2(receiveMessage.CurrentTime),
 	)
+
+	// Acknowledge the message
+	_, err1 := consumer.CommitMessage(msg)
+	if err1 != nil {
+		log.Println(err1)
+	}
 }
 
 func main() {
